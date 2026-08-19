@@ -1,7 +1,7 @@
 import { DEFAULTS, FORWARD_HEADERS } from "./config.js";
 import { HTTPError, NetworkError, TimeoutError } from "./errors.js";
-import { getBodySize, trackResponse, trackStream } from "./progress.js";
-import { canRetry, getRetryDelay, resolveRetry, sleep } from "./retry.js";
+import { getBodySize, getContentLength, trackResponse, trackStream } from "./progress.js";
+import { canRetry, getBackoffDelay, getRetryDelay, resolveRetry, sleep } from "./retry.js";
 import type {
     Fetcher,
     FetcherConfig,
@@ -75,9 +75,7 @@ const isStream = (body: BodyInit | null | undefined): body is ReadableStream => 
     return typeof ReadableStream !== "undefined" && body instanceof ReadableStream;
 };
 
-const isRuntimeBaseUrl = (
-    baseUrl: FetcherConfig["baseUrl"],
-): baseUrl is RuntimeBaseUrl => {
+const isRuntimeBaseUrl = (baseUrl: FetcherConfig["baseUrl"]): baseUrl is RuntimeBaseUrl => {
     return typeof baseUrl === "object" && !(baseUrl instanceof URL);
 };
 
@@ -138,7 +136,9 @@ const getBody = (options: RequestOptions, headers: Headers) => {
 
     if (options.json === undefined) throw new TypeError("json cannot be undefined");
 
-    const body = JSON.stringify(options.json);
+    const body: unknown = JSON.stringify(options.json);
+    if (typeof body !== "string") throw new TypeError("json must be serializable");
+
     if (!headers.has("content-type")) headers.set("content-type", "application/json");
 
     return body;
@@ -152,6 +152,10 @@ const buildRequest = ({
     options,
     signal,
 }: BuildRequestInput) => {
+    if (input instanceof Request && options.searchParams !== undefined) {
+        throw new TypeError("searchParams cannot be combined with a Request input");
+    }
+
     const requestInput =
         input instanceof Request
             ? input
@@ -164,12 +168,7 @@ const buildRequest = ({
               });
 
     const inputHeaders = input instanceof Request ? input.headers : undefined;
-    const headers = mergeHeaders(
-        forwardedHeaders,
-        config.headers,
-        inputHeaders,
-        options.headers,
-    );
+    const headers = mergeHeaders(forwardedHeaders, config.headers, inputHeaders, options.headers);
     const body = getBody(options, headers);
     const hasBody = body !== undefined || "body" in options;
 
@@ -188,8 +187,7 @@ const buildRequest = ({
     let request = new Request(requestInput, requestInit);
 
     if (options.onUploadProgress && request.body) {
-        const headerSize = Number(request.headers.get("content-length"));
-        const total = getBodySize(body) ?? (Number.isFinite(headerSize) ? headerSize : null);
+        const total = getBodySize(body) ?? getContentLength(request.headers);
 
         const tracked = trackStream({
             onProgress: options.onUploadProgress,
@@ -214,6 +212,10 @@ const createOperation = ({
     signal?: AbortSignal | null | undefined;
     timeout: false | number;
 }): Operation => {
+    if (timeout !== false && (!Number.isFinite(timeout) || timeout <= 0)) {
+        throw new TypeError("timeout must be a positive number or false");
+    }
+
     const controller = new AbortController();
     let timedOut = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -224,10 +226,6 @@ const createOperation = ({
     else signal?.addEventListener("abort", abort, { once: true });
 
     if (timeout !== false) {
-        if (!Number.isFinite(timeout) || timeout <= 0) {
-            throw new TypeError("timeout must be a positive number or false");
-        }
-
         timer = setTimeout(() => {
             timedOut = true;
             controller.abort();
@@ -289,10 +287,6 @@ class Task implements FetchTask {
         return (await this.#promise).arrayBuffer();
     }
 
-    async bytes() {
-        return (await this.#promise).bytes();
-    }
-
     async formData() {
         return (await this.#promise).formData();
     }
@@ -303,13 +297,13 @@ const createMethod =
     (input: RequestInput = "", options: RequestOptions = {}) =>
         new Task(async () => {
             const timeout = options.timeout ?? config.timeout ?? DEFAULTS.timeout;
+            const retry = resolveRetry(options.retry ?? config.retry);
 
             const operation = createOperation({
                 signal: options.signal ?? (input instanceof Request ? input.signal : undefined),
                 timeout,
             });
 
-            const retry = resolveRetry(options.retry ?? config.retry);
             const beforeRequest = options.beforeRequest ?? config.beforeRequest;
             const afterResponse = options.afterResponse ?? config.afterResponse;
             const onRetry = options.onRetry ?? config.onRetry;
@@ -328,10 +322,7 @@ const createMethod =
                 return changed ?? current;
             };
             const getTimeoutError = () =>
-                new TimeoutError(
-                    operation.timeout === false ? 0 : operation.timeout,
-                    lastRequest,
-                );
+                new TimeoutError(operation.timeout === false ? 0 : operation.timeout, lastRequest);
 
             try {
                 let forwardedHeaders: Headers | undefined;
@@ -374,6 +365,7 @@ const createMethod =
 
                         const networkError = new NetworkError(error, built.request);
                         if (
+                            !retry ||
                             !canRetry({
                                 attempt,
                                 config: retry,
@@ -384,7 +376,7 @@ const createMethod =
                             throw await handleError(networkError);
                         }
 
-                        const delay = getRetryDelay({ attempt, config: retry!, response: null });
+                        const delay = getBackoffDelay({ attempt, config: retry });
                         try {
                             await onRetry?.({
                                 attempt,
@@ -425,25 +417,30 @@ const createMethod =
                         });
 
                     if (shouldRetry && retry) {
-                        const error = new HTTPError(response, built.request);
                         const delay = getRetryDelay({ attempt, config: retry, response });
 
-                        try {
-                            await onRetry?.({
-                                attempt,
-                                delay,
-                                error,
-                                request: built.request,
-                                response,
-                            });
-                            await response.body?.cancel();
-                            await sleep(delay, operation.signal);
-                        } catch (retryError) {
-                            throw await handleError(
-                                operation.didTimeout() ? getTimeoutError() : retryError,
-                            );
+                        if (delay !== null) {
+                            const error = new HTTPError(response, built.request);
+
+                            try {
+                                await onRetry?.({
+                                    attempt,
+                                    delay,
+                                    error,
+                                    request: built.request,
+                                    response,
+                                });
+                                if (response.body && !response.bodyUsed && !response.body.locked) {
+                                    await response.body.cancel();
+                                }
+                                await sleep(delay, operation.signal);
+                            } catch (retryError) {
+                                throw await handleError(
+                                    operation.didTimeout() ? getTimeoutError() : retryError,
+                                );
+                            }
+                            continue;
                         }
-                        continue;
                     }
 
                     response = trackResponse(response, options.onDownloadProgress);

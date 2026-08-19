@@ -143,6 +143,8 @@ const accounts = await api
 
 Supported values are strings, numbers, booleans, `null`, `undefined`, and arrays of those values. `null` and `undefined` are omitted. Request parameters replace instance parameters with the same name.
 
+An input `Request` already owns its URL. Passing request-specific `searchParams` with it throws instead of silently ignoring them.
+
 ## Response shortcuts
 
 ```ts
@@ -150,7 +152,6 @@ api.get("data").json<MyType>();
 api.get("data").text();
 api.get("data").blob();
 api.get("data").arrayBuffer();
-api.get("data").bytes();
 api.get("data").formData();
 api.get("data").response();
 ```
@@ -292,7 +293,7 @@ const api = ft.create({
 });
 ```
 
-Only `GET` and `HEAD` are retried by default. Add mutation methods explicitly only when the endpoint is idempotent. Request streams are never replayed or buffered silently. `Retry-After` is respected and capped by `maxDelay`.
+Only `GET` and `HEAD` are retried by default. Add mutation methods explicitly only when the endpoint is idempotent. Request streams are never replayed or buffered silently. A `Retry-After` value within `maxDelay` is followed exactly without jitter. Responses requesting a longer delay are not retried.
 
 ## Timeout and cancellation
 

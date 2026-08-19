@@ -24,6 +24,15 @@ export const getBodySize = (body: BodyInit | null | undefined): number | null =>
     return null;
 };
 
+export const getContentLength = (headers: Headers): number | null => {
+    const value = headers.get("content-length");
+
+    if (value === null || value.trim() === "") return null;
+
+    const length = Number(value);
+    return Number.isFinite(length) && length >= 0 ? length : null;
+};
+
 export const trackStream = ({ onProgress, stream, total }: TrackStreamInput) => {
     let transferred = 0;
 
@@ -32,7 +41,7 @@ export const trackStream = ({ onProgress, stream, total }: TrackStreamInput) => 
     return stream.pipeThrough(
         new TransformStream<Uint8Array, Uint8Array>({
             flush: () => {
-                if (transferred === 0) onProgress(getProgress(0, total ?? 0));
+                if (transferred === 0) onProgress(getProgress(0, total));
             },
             transform: (chunk, controller) => {
                 transferred += chunk.byteLength;
@@ -46,8 +55,7 @@ export const trackStream = ({ onProgress, stream, total }: TrackStreamInput) => 
 export const trackResponse = (response: Response, onProgress?: (progress: Progress) => void) => {
     if (!onProgress || !response.body) return response;
 
-    const length = Number(response.headers.get("content-length"));
-    const total = Number.isFinite(length) && length >= 0 ? length : null;
+    const total = getContentLength(response.headers);
     const body = trackStream({ onProgress, stream: response.body, total });
     const tracked = new Response(body, response);
 

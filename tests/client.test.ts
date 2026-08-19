@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
+import { getEventListeners } from "node:events";
 import {
     createServer,
     type IncomingMessage,
-    type Server,
     type ServerResponse,
 } from "node:http";
-import { after, before, beforeEach, describe, test } from "node:test";
+import { after, beforeEach, describe, test } from "node:test";
 
 import ft, { HTTPError, TimeoutError } from "../src/index.js";
+import { getRetryDelay, resolveRetry, sleep } from "../src/retry.js";
 import { resolveUrl } from "../src/url.js";
 
 type Echo = {
@@ -19,7 +20,6 @@ type Echo = {
 
 let baseUrl = "";
 let retryCount = 0;
-let server: Server;
 
 const readBody = async (request: IncomingMessage) => {
     const chunks: Uint8Array[] = [];
@@ -72,6 +72,19 @@ const handle = async (request: IncomingMessage, response: ServerResponse) => {
         return;
     }
 
+    if (url.pathname === "/retry-after") {
+        retryCount += 1;
+        const body = JSON.stringify({ attempt: retryCount });
+
+        response.writeHead(503, {
+            "content-length": Buffer.byteLength(body),
+            "content-type": "application/json",
+            "retry-after": "60",
+        });
+        response.end(body);
+        return;
+    }
+
     if (url.pathname === "/error") {
         sendJson(response, { error: "Unavailable" }, 503);
         return;
@@ -90,6 +103,13 @@ const handle = async (request: IncomingMessage, response: ServerResponse) => {
         return;
     }
 
+    if (url.pathname === "/download-unknown") {
+        response.writeHead(200);
+        response.write("unknown-");
+        response.end("length");
+        return;
+    }
+
     if (url.pathname === "/empty") {
         response.writeHead(204);
         response.end();
@@ -99,21 +119,18 @@ const handle = async (request: IncomingMessage, response: ServerResponse) => {
     sendJson(response, { error: "Not found" }, 404);
 };
 
-before(async () => {
-    server = createServer((request, response) => {
-        void handle(request, response);
-    });
-
-    await new Promise<void>((resolve) => {
-        server.listen(0, "127.0.0.1", resolve);
-    });
-
-    const address = server.address();
-    if (!address || typeof address === "string") throw new Error("Test server failed to start");
-
-    baseUrl = `http://127.0.0.1:${String(address.port)}`;
-
+const server = createServer((request, response) => {
+    void handle(request, response);
 });
+
+await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+});
+
+const address = server.address();
+if (!address || typeof address === "string") throw new Error("Test server failed to start");
+
+baseUrl = `http://127.0.0.1:${String(address.port)}`;
 
 after(async () => {
     await new Promise<void>((resolve, reject) => {
@@ -276,6 +293,22 @@ describe("requests", () => {
         );
     });
 
+    test("rejects JSON values that cannot be serialized", async () => {
+        await assert.rejects(
+            ft.post(`${baseUrl}/echo`, { json: Symbol("invalid") }).response(),
+            /json must be serializable/,
+        );
+    });
+
+    test("rejects search parameters used with a Request input", async () => {
+        const request = new Request(`${baseUrl}/echo`);
+
+        await assert.rejects(
+            ft.get(request, { searchParams: { page: 2 } }).response(),
+            /searchParams cannot be combined with a Request input/,
+        );
+    });
+
     test("keeps native empty JSON parsing behavior", async () => {
         await assert.rejects(ft.get(`${baseUrl}/empty`).json(), SyntaxError);
     });
@@ -315,6 +348,55 @@ describe("errors and reliability", () => {
         assert.equal(result.attempt, 3);
     });
 
+    test("retries when onRetry consumes the response body", async () => {
+        const result = await ft
+            .get(`${baseUrl}/retry`, {
+                onRetry: async ({ response }) => {
+                    await response?.text();
+                },
+                retry: { baseDelay: 0, jitter: false, limit: 2 },
+            })
+            .json<{ attempt: number }>();
+
+        assert.equal(result.attempt, 3);
+    });
+
+    test("respects Retry-After without jitter or an early retry", () => {
+        const retry = resolveRetry({ jitter: true, limit: 1, maxDelay: 30_000 });
+        assert.ok(retry);
+
+        const accepted = new Response(null, {
+            headers: { "retry-after": "10" },
+            status: 429,
+        });
+        const excessive = new Response(null, {
+            headers: { "retry-after": "60" },
+            status: 429,
+        });
+
+        assert.equal(
+            getRetryDelay({ attempt: 1, config: retry, response: accepted }),
+            10_000,
+        );
+        assert.equal(
+            getRetryDelay({ attempt: 1, config: retry, response: excessive }),
+            null,
+        );
+    });
+
+    test("does not retry when Retry-After exceeds maxDelay", async () => {
+        await assert.rejects(
+            ft
+                .get(`${baseUrl}/retry-after`, {
+                    retry: { limit: 2, maxDelay: 30_000 },
+                })
+                .response(),
+            HTTPError,
+        );
+
+        assert.equal(retryCount, 1);
+    });
+
     test("does not retry POST by default", async () => {
         await assert.rejects(
             ft
@@ -349,6 +431,33 @@ describe("errors and reliability", () => {
                 .response(),
             TimeoutError,
         );
+    });
+
+    test("cleans abort listeners after delays and invalid options", async () => {
+        const delayController = new AbortController();
+        await sleep(0, delayController.signal);
+        assert.equal(getEventListeners(delayController.signal, "abort").length, 0);
+
+        const optionController = new AbortController();
+        await assert.rejects(
+            ft
+                .get(`${baseUrl}/echo`, {
+                    signal: optionController.signal,
+                    timeout: 0,
+                })
+                .response(),
+            /timeout must be a positive number or false/,
+        );
+        await assert.rejects(
+            ft
+                .get(`${baseUrl}/echo`, {
+                    retry: { limit: -1 },
+                    signal: optionController.signal,
+                })
+                .response(),
+            /retry.limit must be a non-negative number/,
+        );
+        assert.equal(getEventListeners(optionController.signal, "abort").length, 0);
     });
 });
 
@@ -442,5 +551,30 @@ describe("progress", () => {
         assert.equal(result.body, "upload-body");
         assert.equal(values.at(0), 0);
         assert.equal(values.at(-1), Buffer.byteLength("upload-body"));
+    });
+
+    test("keeps unknown upload and download totals as null", async () => {
+        const upload: { percent: number | null; total: number | null }[] = [];
+        const form = new FormData();
+        form.set("name", "Gauts");
+
+        await ft
+            .post(`${baseUrl}/echo`, {
+                body: form,
+                onUploadProgress: ({ percent, total }) => upload.push({ percent, total }),
+            })
+            .response();
+
+        const download: { percent: number | null; total: number | null }[] = [];
+        await ft
+            .get(`${baseUrl}/download-unknown`, {
+                onDownloadProgress: ({ percent, total }) => download.push({ percent, total }),
+            })
+            .text();
+
+        assert.ok(upload.length > 0);
+        assert.ok(download.length > 0);
+        assert.ok(upload.every(({ percent, total }) => percent === null && total === null));
+        assert.ok(download.every(({ percent, total }) => percent === null && total === null));
     });
 });

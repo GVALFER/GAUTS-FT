@@ -10,10 +10,13 @@ type CanRetryInput = {
     replayable: boolean;
 };
 
-type GetRetryDelayInput = {
+type GetBackoffDelayInput = {
     attempt: number;
     config: ResolvedRetry;
-    response: Response | null;
+};
+
+type GetRetryDelayInput = GetBackoffDelayInput & {
+    response: Response;
 };
 
 const assertNumber = (name: string, value: number) => {
@@ -57,12 +60,21 @@ const retryAfter = (response: Response) => {
     return Number.isNaN(date) ? null : Math.max(0, date - Date.now());
 };
 
-export const getRetryDelay = ({ attempt, config, response }: GetRetryDelayInput) => {
-    const headerDelay = response ? retryAfter(response) : null;
+export const getBackoffDelay = ({ attempt, config }: GetBackoffDelayInput) => {
     const backoff = config.baseDelay * 2 ** (attempt - 1);
-    const base = Math.min(headerDelay ?? backoff, config.maxDelay);
+    const base = Math.min(backoff, config.maxDelay);
 
     return config.jitter ? Math.round(Math.random() * base) : base;
+};
+
+export const getRetryDelay = ({ attempt, config, response }: GetRetryDelayInput) => {
+    const headerDelay = retryAfter(response);
+
+    if (headerDelay !== null) {
+        return headerDelay <= config.maxDelay ? headerDelay : null;
+    }
+
+    return getBackoffDelay({ attempt, config });
 };
 
 export const sleep = (delay: number, signal: AbortSignal) =>
@@ -77,13 +89,14 @@ export const sleep = (delay: number, signal: AbortSignal) =>
             return;
         }
 
-        const timer = setTimeout(resolve, delay);
-        signal.addEventListener(
-            "abort",
-            () => {
-                clearTimeout(timer);
-                reject(getError());
-            },
-            { once: true },
-        );
+        const abort = () => {
+            clearTimeout(timer);
+            reject(getError());
+        };
+        const timer = setTimeout(() => {
+            signal.removeEventListener("abort", abort);
+            resolve();
+        }, delay);
+
+        signal.addEventListener("abort", abort, { once: true });
     });

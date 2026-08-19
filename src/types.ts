@@ -110,7 +110,6 @@ export type RequestOptions = Omit<RequestInit, "method"> &
 export type FetchTask = PromiseLike<Response> & {
     arrayBuffer: () => Promise<ArrayBuffer>;
     blob: () => Promise<Blob>;
-    bytes: () => Promise<Uint8Array<ArrayBuffer>>;
     catch: <TResult = never>(
         onRejected?: ((reason: unknown) => PromiseLike<TResult> | TResult) | null,
     ) => Promise<Response | TResult>;
