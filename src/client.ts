@@ -1,8 +1,10 @@
 import { DEFAULTS, FORWARD_HEADERS } from "./config.js";
+import { saveDownload } from "./download.js";
 import { HTTPError, NetworkError, TimeoutError } from "./errors.js";
 import { getBodySize, getContentLength, trackResponse, trackStream } from "./progress.js";
 import { canRetry, getBackoffDelay, getRetryDelay, resolveRetry, sleep } from "./retry.js";
 import type {
+    DownloadOptions,
     Fetcher,
     FetcherConfig,
     FetchTask,
@@ -294,6 +296,10 @@ class Task implements FetchTask {
 
     async blob() {
         return (await this.#promise).blob();
+    }
+
+    async download(options: DownloadOptions = {}) {
+        await saveDownload({ options, response: await this.#promise });
     }
 
     async arrayBuffer() {

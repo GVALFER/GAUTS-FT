@@ -7,6 +7,7 @@ export type { ErrorInfo } from "./errors.js";
 export type {
     AfterResponse,
     BeforeRequest,
+    DownloadOptions,
     ErrorContext,
     Fetcher,
     FetcherConfig,

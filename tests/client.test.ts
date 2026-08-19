@@ -8,6 +8,7 @@ import {
 import { after, beforeEach, describe, test } from "node:test";
 
 import ft, { errorInfo, HTTPError, TimeoutError } from "../src/index.js";
+import { getDownloadName } from "../src/download.js";
 import { getRetryDelay, resolveRetry, sleep } from "../src/retry.js";
 import { resolveUrl } from "../src/url.js";
 
@@ -100,6 +101,16 @@ const handle = async (request: IncomingMessage, response: ServerResponse) => {
         response.writeHead(200, { "content-length": Buffer.byteLength(body) });
         response.write(body.slice(0, 8));
         response.end(body.slice(8));
+        return;
+    }
+
+    if (url.pathname === "/download-name") {
+        const body = "browser-download";
+        response.writeHead(200, {
+            "content-disposition": "attachment; filename*=UTF-8''report%20file.pdf",
+            "content-length": Buffer.byteLength(body),
+        });
+        response.end(body);
         return;
     }
 
@@ -674,5 +685,114 @@ describe("progress", () => {
         assert.ok(download.length > 0);
         assert.ok(upload.every(({ percent, total }) => percent === null && total === null));
         assert.ok(download.every(({ percent, total }) => percent === null && total === null));
+    });
+});
+
+describe("downloads", () => {
+    test("resolves explicit, header, and default filenames", () => {
+        const response = new Response(null, {
+            headers: {
+                "content-disposition":
+                    "attachment; filename=report.pdf; filename*=UTF-8''report%20final.pdf",
+            },
+        });
+
+        assert.equal(
+            getDownloadName({ options: { filename: "../custom.pdf" }, response }),
+            "custom.pdf",
+        );
+        assert.equal(getDownloadName({ options: {}, response }), "report final.pdf");
+        assert.equal(
+            getDownloadName({ options: {}, response: new Response() }),
+            "download",
+        );
+    });
+
+    test("rejects downloads outside browser runtimes", async () => {
+        await assert.rejects(
+            ft.get(`${baseUrl}/download`).download(),
+            /download\(\) is only available in browser runtimes/,
+        );
+    });
+
+    test("downloads tracked responses and releases the object URL", async () => {
+        const anchor = {
+            click: () => {
+                clicked = true;
+            },
+            download: "",
+            hidden: false,
+            href: "",
+            remove: () => {
+                removed = true;
+            },
+        };
+        const documentDescriptor = Object.getOwnPropertyDescriptor(globalThis, "document");
+        const createDescriptor = Object.getOwnPropertyDescriptor(URL, "createObjectURL");
+        const revokeDescriptor = Object.getOwnPropertyDescriptor(URL, "revokeObjectURL");
+        const values: number[] = [];
+        let appended = false;
+        let clicked = false;
+        let removed = false;
+        let revoked = "";
+
+        Object.defineProperty(globalThis, "document", {
+            configurable: true,
+            value: {
+                body: {
+                    appendChild: (element: unknown) => {
+                        assert.equal(element, anchor);
+                        appended = true;
+                    },
+                },
+                createElement: (tag: string) => {
+                    assert.equal(tag, "a");
+                    return anchor;
+                },
+            },
+        });
+        Object.defineProperty(URL, "createObjectURL", {
+            configurable: true,
+            value: (blob: Blob) => {
+                assert.equal(blob.size, Buffer.byteLength("browser-download"));
+                return "blob:download";
+            },
+        });
+        Object.defineProperty(URL, "revokeObjectURL", {
+            configurable: true,
+            value: (url: string) => {
+                revoked = url;
+            },
+        });
+
+        try {
+            await ft
+                .get(`${baseUrl}/download-name`, {
+                    onDownloadProgress: ({ transferred }) => values.push(transferred),
+                })
+                .download();
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            assert.equal(anchor.download, "report file.pdf");
+            assert.equal(anchor.href, "blob:download");
+            assert.equal(appended, true);
+            assert.equal(clicked, true);
+            assert.equal(removed, true);
+            assert.equal(revoked, "blob:download");
+            assert.equal(values.at(0), 0);
+            assert.equal(values.at(-1), Buffer.byteLength("browser-download"));
+        } finally {
+            if (documentDescriptor) {
+                Object.defineProperty(globalThis, "document", documentDescriptor);
+            } else {
+                Reflect.deleteProperty(globalThis, "document");
+            }
+
+            if (createDescriptor) Object.defineProperty(URL, "createObjectURL", createDescriptor);
+            else Reflect.deleteProperty(URL, "createObjectURL");
+
+            if (revokeDescriptor) Object.defineProperty(URL, "revokeObjectURL", revokeDescriptor);
+            else Reflect.deleteProperty(URL, "revokeObjectURL");
+        }
     });
 });

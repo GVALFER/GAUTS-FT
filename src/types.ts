@@ -24,6 +24,10 @@ export type Progress = {
     transferred: number;
 };
 
+export type DownloadOptions = {
+    filename?: string;
+};
+
 export type RequestContext = {
     attempt: number;
     isServer: boolean;
@@ -111,6 +115,7 @@ export type FetchTask = PromiseLike<Response> & {
     catch: <TResult = never>(
         onRejected?: ((reason: unknown) => PromiseLike<TResult> | TResult) | null,
     ) => Promise<Response | TResult>;
+    download: (options?: DownloadOptions) => Promise<void>;
     finally: (onFinally?: (() => void) | null) => Promise<Response>;
     formData: () => Promise<FormData>;
     json: <T = unknown>() => Promise<T>;

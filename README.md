@@ -5,6 +5,7 @@ A small, typed HTTP client built on the native Fetch API.
 - ✅ Ready-to-use default client
 - ✅ Configured instances with `ft.create()`
 - ✅ Typed response shortcuts
+- ✅ Browser file downloads with `.download()`
 - ✅ JSON bodies and search parameters
 - ✅ Timeout and opt-in retries
 - ✅ Typed HTTP, network, and timeout errors
@@ -152,12 +153,32 @@ An input `Request` already owns its URL. Passing request-specific `searchParams`
 api.get("data").json<MyType>();
 api.get("data").text();
 api.get("data").blob();
+api.get("file").download({ filename: "report.pdf" });
 api.get("data").arrayBuffer();
 api.get("data").formData();
 api.get("data").response();
 ```
 
 `json<T>()` defaults to `unknown`. The generic type provides compile-time typing only; it does not validate the response at runtime. Empty or invalid JSON rejects with the native parsing error.
+
+## File downloads
+
+Use `.download()` to save a response directly in the browser:
+
+```ts
+await api
+    .post("invoices/pdf", {
+        json: { invoice_id: "invoice-id" },
+        onDownloadProgress: ({ percent, transferred, total }) => {
+            console.log(percent, transferred, total);
+        },
+    })
+    .download({ filename: "invoice.pdf" });
+```
+
+The explicit `filename` has priority. When omitted, the name is read from the standard `Content-Disposition` response header and falls back to `download`. Path segments are removed from filenames before the browser receives them.
+
+`.download()` is browser-only and rejects with a `TypeError` in server runtimes. Use `.blob()`, `.arrayBuffer()`, or `.response()` when the response must be processed on the server.
 
 ## Configuration
 
@@ -386,7 +407,7 @@ await api
             console.log({ percent, transferred, total });
         },
     })
-    .blob();
+    .download({ filename: "download.bin" });
 ```
 
 `total` and `percent` are `null` when the runtime or server does not provide a known size. Upload progress depends on native request stream support. The package does not switch to XMLHttpRequest or another transport.

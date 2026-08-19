@@ -38,7 +38,7 @@
         }
     },
     "scripts": {
-        "clean": "node --eval \"import { rmSync } from 'node:fs'; rmSync('dist', { force: true, recursive: true })\"",
+        "clean": "node --input-type=module --eval \"import { rmSync } from 'node:fs'; rmSync('dist', { force: true, recursive: true })\"",
         "build": "npm run clean && tsc -p tsconfig.build.json",
         "typecheck": "tsc --noEmit",
         "lint": "eslint src tests examples",
