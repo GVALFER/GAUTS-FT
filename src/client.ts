@@ -22,6 +22,7 @@ type BuildRequestInput = {
     config: FetcherConfig;
     forwardedHeaders?: Headers | undefined;
     input: RequestInput;
+    isServer: boolean;
     method: HttpMethod;
     options: RequestOptions;
     signal: AbortSignal;
@@ -32,6 +33,16 @@ type Operation = {
     didTimeout: () => boolean;
     signal: AbortSignal;
     timeout: false | number;
+};
+
+type GetBaseUrlInput = {
+    baseUrl: FetcherConfig["baseUrl"];
+    isServer: boolean;
+};
+
+type GetForwardedHeadersInput = {
+    config: FetcherConfig;
+    isServer: boolean;
 };
 
 const CONFIG_KEYS = new Set([
@@ -79,14 +90,14 @@ const isRuntimeBaseUrl = (baseUrl: FetcherConfig["baseUrl"]): baseUrl is Runtime
     return typeof baseUrl === "object" && !(baseUrl instanceof URL);
 };
 
-const getBaseUrl = (baseUrl: FetcherConfig["baseUrl"]) => {
+const getBaseUrl = ({ baseUrl, isServer }: GetBaseUrlInput) => {
     if (!isRuntimeBaseUrl(baseUrl)) return baseUrl;
 
-    return typeof window === "undefined" ? baseUrl.server : baseUrl.client;
+    return isServer ? baseUrl.server : baseUrl.client;
 };
 
-const getForwardedHeaders = async (config: FetcherConfig) => {
-    if (!config.forwardHeaders || typeof window !== "undefined") return undefined;
+const getForwardedHeaders = async ({ config, isServer }: GetForwardedHeadersInput) => {
+    if (!config.forwardHeaders || !isServer) return undefined;
     if (!config.getHeaders) {
         throw new TypeError("getHeaders is required when forwardHeaders is enabled on the server");
     }
@@ -148,6 +159,7 @@ const buildRequest = ({
     config,
     forwardedHeaders,
     input,
+    isServer,
     method,
     options,
     signal,
@@ -160,7 +172,7 @@ const buildRequest = ({
         input instanceof Request
             ? input
             : resolveUrl({
-                  baseUrl: getBaseUrl(config.baseUrl),
+                  baseUrl: getBaseUrl({ baseUrl: config.baseUrl, isServer }),
                   input,
                   prefix: config.prefix,
                   requestSearchParams: options.searchParams,
@@ -184,6 +196,7 @@ const buildRequest = ({
     const requestInit: RequestInit = isStream(body)
         ? ({ ...init, duplex: "half" } as StreamRequestInit)
         : init;
+
     let request = new Request(requestInput, requestInit);
 
     if (options.onUploadProgress && request.body) {
@@ -296,6 +309,7 @@ const createMethod =
     (config: FetcherConfig, method: HttpMethod) =>
     (input: RequestInput = "", options: RequestOptions = {}) =>
         new Task(async () => {
+            const isServer = typeof window === "undefined";
             const timeout = options.timeout ?? config.timeout ?? DEFAULTS.timeout;
             const retry = resolveRetry(options.retry ?? config.retry);
 
@@ -318,9 +332,17 @@ const createMethod =
 
             const handleError = async (error: unknown) => {
                 const current = toError(error);
-                const changed = await onError?.({ attempt, error: current, request: lastRequest });
+
+                const changed = await onError?.({
+                    attempt,
+                    error: current,
+                    isServer,
+                    request: lastRequest,
+                });
+
                 return changed ?? current;
             };
+
             const getTimeoutError = () =>
                 new TimeoutError(operation.timeout === false ? 0 : operation.timeout, lastRequest);
 
@@ -328,7 +350,7 @@ const createMethod =
                 let forwardedHeaders: Headers | undefined;
 
                 try {
-                    forwardedHeaders = await getForwardedHeaders(config);
+                    forwardedHeaders = await getForwardedHeaders({ config, isServer });
                 } catch (error) {
                     throw await handleError(error);
                 }
@@ -341,6 +363,7 @@ const createMethod =
                         config,
                         forwardedHeaders,
                         input,
+                        isServer,
                         method,
                         options,
                         signal: operation.signal,
@@ -348,7 +371,7 @@ const createMethod =
                     lastRequest = built.request;
 
                     try {
-                        await beforeRequest?.({ attempt, request: built.request });
+                        await beforeRequest?.({ attempt, isServer, request: built.request });
                     } catch (error) {
                         throw await handleError(error);
                     }
@@ -382,6 +405,7 @@ const createMethod =
                                 attempt,
                                 delay,
                                 error: networkError,
+                                isServer,
                                 request: built.request,
                                 response: null,
                             });
@@ -398,6 +422,7 @@ const createMethod =
                         response =
                             (await afterResponse?.({
                                 attempt,
+                                isServer,
                                 request: built.request,
                                 response,
                             })) ?? response;
@@ -427,6 +452,7 @@ const createMethod =
                                     attempt,
                                     delay,
                                     error,
+                                    isServer,
                                     request: built.request,
                                     response,
                                 });
@@ -446,6 +472,7 @@ const createMethod =
                     response = trackResponse(response, options.onDownloadProgress);
                     const context: ResponseContext = {
                         attempt,
+                        isServer,
                         request: built.request,
                         response,
                     };

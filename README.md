@@ -311,8 +311,9 @@ The timeout covers all attempts and retry delays until the final response header
 
 ```ts
 const api = ft.create({
-    beforeRequest: ({ attempt, request }) => {
+    beforeRequest: ({ attempt, isServer, request }) => {
         request.headers.set("x-attempt", String(attempt));
+        request.headers.set("x-runtime", isServer ? "server" : "client");
     },
 
     afterResponse: ({ response }) => {
@@ -341,6 +342,7 @@ beforeRequest
 ```
 
 `afterResponse` may return a replacement `Response`. `onError` may return a replacement `Error`.
+Every lifecycle callback receives `isServer`, calculated once when the request operation starts.
 
 ## Status actions
 
@@ -349,8 +351,12 @@ beforeRequest
 ```ts
 const api = ft.create({
     onStatus: {
-        401: ({ response }) => {
-            console.log("Unauthorized", response.url);
+        401: ({ isServer, request }) => {
+            if (!isServer) {
+                window.location.replace("/login");
+            }
+
+            console.log("Unauthorized", request.url);
         },
         503: () => {
             throw new Error("Maintenance mode");

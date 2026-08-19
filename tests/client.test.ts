@@ -464,19 +464,24 @@ describe("errors and reliability", () => {
 describe("callbacks", () => {
     test("runs callbacks in order and status actions only on the final response", async () => {
         const events: string[] = [];
+        const runtimes: boolean[] = [];
         const api = ft.create({
-            afterResponse: ({ attempt }) => {
+            afterResponse: ({ attempt, isServer }) => {
                 events.push(`after:${String(attempt)}`);
+                runtimes.push(isServer);
             },
-            beforeRequest: ({ attempt }) => {
+            beforeRequest: ({ attempt, isServer }) => {
                 events.push(`before:${String(attempt)}`);
+                runtimes.push(isServer);
             },
-            onRetry: ({ attempt }) => {
+            onRetry: ({ attempt, isServer }) => {
                 events.push(`retry:${String(attempt)}`);
+                runtimes.push(isServer);
             },
             onStatus: {
-                200: ({ attempt }) => {
+                200: ({ attempt, isServer }) => {
                     events.push(`status:${String(attempt)}`);
+                    runtimes.push(isServer);
                 },
             },
             retry: { baseDelay: 0, jitter: false, limit: 2 },
@@ -495,17 +500,59 @@ describe("callbacks", () => {
             "after:3",
             "status:3",
         ]);
+        assert.ok(runtimes.every(Boolean));
     });
 
     test("allows onError to replace the final error", async () => {
+        let isServer = false;
+
         await assert.rejects(
             ft
                 .get(`${baseUrl}/error`, {
-                    onError: ({ error }) => new Error("Changed error", { cause: error }),
+                    onError: ({ error, isServer: current }) => {
+                        isServer = current;
+                        return new Error("Changed error", { cause: error });
+                    },
                 })
                 .response(),
             /Changed error/,
         );
+
+        assert.equal(isServer, true);
+    });
+
+    test("reports the browser runtime in callback contexts", async () => {
+        const runtimes: boolean[] = [];
+
+        Object.defineProperty(globalThis, "window", {
+            configurable: true,
+            value: {},
+        });
+
+        try {
+            await assert.rejects(
+                ft
+                    .get(`${baseUrl}/error`, {
+                        afterResponse: ({ isServer }) => {
+                            runtimes.push(isServer);
+                        },
+                        beforeRequest: ({ isServer }) => runtimes.push(isServer),
+                        onError: ({ error, isServer }) => {
+                            runtimes.push(isServer);
+                            return error;
+                        },
+                        onStatus: {
+                            503: ({ isServer }) => runtimes.push(isServer),
+                        },
+                    })
+                    .response(),
+                HTTPError,
+            );
+        } finally {
+            Reflect.deleteProperty(globalThis, "window");
+        }
+
+        assert.deepEqual(runtimes, [false, false, false, false]);
     });
 
     test("propagates status action errors unchanged", async () => {

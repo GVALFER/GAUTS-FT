@@ -14,11 +14,7 @@ export type RuntimeBaseUrl = {
     server: string | URL;
 };
 
-export type ForwardHeaders =
-    | boolean
-    | {
-          extra: readonly string[];
-      };
+export type ForwardHeaders = boolean | { extra: readonly string[] };
 
 export type GetHeaders = () => HeadersInit | Promise<HeadersInit>;
 
@@ -30,6 +26,7 @@ export type Progress = {
 
 export type RequestContext = {
     attempt: number;
+    isServer: boolean;
     request: Request;
 };
 
@@ -46,6 +43,7 @@ export type RetryContext = RequestContext & {
 export type ErrorContext = {
     attempt: number;
     error: Error;
+    isServer: boolean;
     request: Request | null;
 };
 

@@ -10,9 +10,9 @@ const api = ft.create({
     headers: {
         accept: "application/json",
     },
-    onError: ({ error }) => {
+    onError: ({ error, isServer }) => {
         if (error instanceof HTTPError) {
-            console.error(error.response.status);
+            console.error({ isServer, status: error.response.status });
         }
 
         return error;
