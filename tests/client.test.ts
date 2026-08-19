@@ -7,7 +7,7 @@ import {
 } from "node:http";
 import { after, beforeEach, describe, test } from "node:test";
 
-import ft, { HTTPError, TimeoutError } from "../src/index.js";
+import ft, { errorInfo, HTTPError, TimeoutError } from "../src/index.js";
 import { getRetryDelay, resolveRetry, sleep } from "../src/retry.js";
 import { resolveUrl } from "../src/url.js";
 
@@ -86,7 +86,7 @@ const handle = async (request: IncomingMessage, response: ServerResponse) => {
     }
 
     if (url.pathname === "/error") {
-        sendJson(response, { error: "Unavailable" }, 503);
+        sendJson(response, { code: "SERVICE_UNAVAILABLE", error: "Unavailable" }, 503);
         return;
     }
 
@@ -333,6 +333,57 @@ describe("errors and reliability", () => {
             .response();
 
         assert.equal(response.status, 503);
+    });
+
+    test("returns structured error information without consuming the response", async () => {
+        let caught: unknown;
+
+        try {
+            await ft.get(`${baseUrl}/error`).json();
+        } catch (error) {
+            caught = error;
+        }
+
+        const info = await errorInfo(caught);
+
+        assert.deepEqual(info, {
+            code: "SERVICE_UNAVAILABLE",
+            message: "Unavailable",
+            status: 503,
+        });
+        assert.ok(caught instanceof HTTPError);
+        assert.deepEqual(await caught.response.json(), {
+            code: "SERVICE_UNAVAILABLE",
+            error: "Unavailable",
+        });
+    });
+
+    test("reads message-based JSON errors", async () => {
+        const request = new Request(`${baseUrl}/accounts`);
+        const response = new Response(JSON.stringify({ message: "Invalid account" }), {
+            headers: { "content-type": "application/json" },
+            status: 400,
+        });
+        const info = await errorInfo(new HTTPError(response, request));
+
+        assert.deepEqual(info, {
+            message: "Invalid account",
+            status: 400,
+        });
+    });
+
+    test("falls back to native and unknown error messages", async () => {
+        const timeout = await errorInfo(new TimeoutError(20, null));
+        const unknown = await errorInfo(null);
+
+        assert.deepEqual(timeout, {
+            message: "Request timed out after 20ms",
+            status: 0,
+        });
+        assert.deepEqual(unknown, {
+            message: "Request failed",
+            status: 0,
+        });
     });
 
     test("retries configured safe requests", async () => {

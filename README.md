@@ -8,6 +8,7 @@ A small, typed HTTP client built on the native Fetch API.
 - ✅ JSON bodies and search parameters
 - ✅ Timeout and opt-in retries
 - ✅ Typed HTTP, network, and timeout errors
+- ✅ Structured error information with `errorInfo()`
 - ✅ Upload and download progress with native streams
 - ✅ Request, response, retry, error, and status callbacks
 - ✅ Automatic browser/server base URL selection
@@ -393,13 +394,32 @@ await api
 ## Errors
 
 ```ts
-import { FetchError, HTTPError, NetworkError, TimeoutError } from "@gauts/ft";
+import {
+    errorInfo,
+    FetchError,
+    HTTPError,
+    NetworkError,
+    TimeoutError,
+} from "@gauts/ft";
 ```
 
 - `HTTPError` exposes `request` and `response`.
 - `NetworkError` exposes `request` and the native error through `cause`.
 - `TimeoutError` exposes `request` and `timeout`.
 - `FetchError` is the shared base class.
+
+Use `errorInfo()` to obtain a consistent result without consuming the original response:
+
+```ts
+try {
+    await api.get("accounts");
+} catch (err) {
+    const { code, message, status } = await errorInfo(err);
+    console.log({ code, message, status });
+}
+```
+
+It reads `error`, `message`, and `code` from JSON error responses. HTTP errors use the response status; errors without an HTTP response use status `0`. Unknown errors return `Request failed`.
 
 ## Current scope
 

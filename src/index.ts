@@ -2,7 +2,8 @@ import { createFetcher } from "./client.js";
 import type { Ft } from "./types.js";
 
 export { createFetcher } from "./client.js";
-export { FetchError, HTTPError, NetworkError, TimeoutError } from "./errors.js";
+export { errorInfo, FetchError, HTTPError, NetworkError, TimeoutError } from "./errors.js";
+export type { ErrorInfo } from "./errors.js";
 export type {
     AfterResponse,
     BeforeRequest,
