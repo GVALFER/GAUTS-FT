@@ -1,6 +1,6 @@
 {
     "name": "@gauts/ft",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "A small, typed HTTP client built on the native Fetch API.",
     "license": "MIT",
     "author": "GVALFER",
