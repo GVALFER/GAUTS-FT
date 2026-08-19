@@ -1,0 +1,62 @@
+{
+    "name": "@gauts/ft",
+    "version": "0.1.0",
+    "description": "A small, typed HTTP client built on the native Fetch API.",
+    "license": "MIT",
+    "author": "GVALFER",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/GVALFER/GAUTS-FT.git"
+    },
+    "homepage": "https://github.com/GVALFER/GAUTS-FT#readme",
+    "bugs": {
+        "url": "https://github.com/GVALFER/GAUTS-FT/issues"
+    },
+    "keywords": [
+        "fetch",
+        "fetcher",
+        "http",
+        "request",
+        "retry",
+        "typescript"
+    ],
+    "type": "module",
+    "packageManager": "npm@11.17.0",
+    "engines": {
+        "node": ">=22.0.0"
+    },
+    "files": [
+        "dist",
+        "LICENSE",
+        "README.md",
+        "SECURITY.md"
+    ],
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        }
+    },
+    "scripts": {
+        "clean": "node --eval \"import { rmSync } from 'node:fs'; rmSync('dist', { force: true, recursive: true })\"",
+        "build": "npm run clean && tsc -p tsconfig.build.json",
+        "typecheck": "tsc --noEmit",
+        "lint": "eslint src tests examples",
+        "test": "node --import tsx --test tests/**/*.test.ts",
+        "check": "npm run build && npm run lint && npm run typecheck && npm test",
+        "prepack": "npm run check"
+    },
+    "publishConfig": {
+        "access": "public"
+    },
+    "devDependencies": {
+        "@eslint/js": "^9.39.5",
+        "@types/node": "^24.10.0",
+        "esbuild": "^0.25.12",
+        "eslint": "^9.39.5",
+        "globals": "^16.5.0",
+        "tsx": "^4.23.0",
+        "typescript": "^5.9.3",
+        "typescript-eslint": "^8.66.0"
+    }
+}
