@@ -1,7 +1,7 @@
 {
     "name": "@gauts/ft",
-    "version": "0.1.3",
-    "description": "A small, typed HTTP client built on the native Fetch API.",
+    "version": "0.1.4",
+    "description": "A lightweight, typed HTTP client for browsers and Node.js, built on native Fetch with retries, timeouts, and progress tracking.",
     "license": "MIT",
     "author": "GVALFER",
     "repository": {

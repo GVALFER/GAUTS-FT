@@ -3,7 +3,7 @@
 [![Minified Size](https://img.shields.io/badge/minified-11.1_kB-007ec6)](https://bundlephobia.com/package/@gauts/ft)
 [![Minified and Gzipped Size](https://img.shields.io/badge/minified_%2B_gzip-4.2_kB-007ec6)](https://bundlephobia.com/package/@gauts/ft)
 
-A small, typed HTTP client built on the native Fetch API.
+A lightweight, typed HTTP client for browsers and Node.js, built on native Fetch with retries, timeouts, and progress tracking.
 
 - ✅ Ready-to-use default client
 - ✅ Configured instances with `ft.create()`
