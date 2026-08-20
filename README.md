@@ -1,5 +1,7 @@
 # @gauts/ft
 
+[![Bundle Size](https://img.shields.io/bundlephobia/minzip/%40gauts%2Fft)](https://bundlephobia.com/package/@gauts/ft)
+
 A small, typed HTTP client built on the native Fetch API.
 
 - ✅ Ready-to-use default client
@@ -184,22 +186,22 @@ The explicit `filename` has priority. When omitted, the name is read from the st
 
 ### Instance options
 
-| Property          | Type                             | Default | Description                                           |
-| ----------------- | -------------------------------- | ------- | ----------------------------------------------------- |
-| `baseUrl`         | `string \| URL \| RuntimeBaseUrl` | —       | Static URL or automatic client/server URLs.           |
-| `prefix`          | `string`                         | —       | Path inserted between `baseUrl` and the request path. |
-| `searchParams`    | `SearchParams`                   | —       | Parameters included in every request.                 |
-| `headers`         | `HeadersInit`                    | —       | Headers included in every request.                    |
-| `forwardHeaders`  | `boolean \| { extra: string[] }` | `false` | Forwards allowlisted incoming headers on the server.  |
-| `getHeaders`      | `() => HeadersInit \| Promise<HeadersInit>` | — | Provides the current incoming server headers.     |
-| `timeout`         | `number \| false`                | `false` | Request timeout in milliseconds.                      |
-| `retry`           | `number \| RetryConfig \| false` | `false` | Enables retries. A number is the retry limit.         |
-| `throwHttpErrors` | `boolean`                        | `true`  | Throws `HTTPError` for non-2xx responses.             |
-| `beforeRequest`   | `BeforeRequest`                  | —       | Runs before every attempt.                            |
-| `afterResponse`   | `AfterResponse`                  | —       | Runs after every received response.                   |
-| `onRetry`         | `OnRetry`                        | —       | Runs before a retry delay.                            |
-| `onError`         | `OnError`                        | —       | Observes or replaces the final error.                 |
-| `onStatus`        | `StatusHandlers`                 | —       | Runs an action for the final response status.         |
+| Property          | Type                                        | Default | Description                                           |
+| ----------------- | ------------------------------------------- | ------- | ----------------------------------------------------- |
+| `baseUrl`         | `string \| URL \| RuntimeBaseUrl`           | —       | Static URL or automatic client/server URLs.           |
+| `prefix`          | `string`                                    | —       | Path inserted between `baseUrl` and the request path. |
+| `searchParams`    | `SearchParams`                              | —       | Parameters included in every request.                 |
+| `headers`         | `HeadersInit`                               | —       | Headers included in every request.                    |
+| `forwardHeaders`  | `boolean \| { extra: string[] }`            | `false` | Forwards allowlisted incoming headers on the server.  |
+| `getHeaders`      | `() => HeadersInit \| Promise<HeadersInit>` | —       | Provides the current incoming server headers.         |
+| `timeout`         | `number \| false`                           | `false` | Request timeout in milliseconds.                      |
+| `retry`           | `number \| RetryConfig \| false`            | `false` | Enables retries. A number is the retry limit.         |
+| `throwHttpErrors` | `boolean`                                   | `true`  | Throws `HTTPError` for non-2xx responses.             |
+| `beforeRequest`   | `BeforeRequest`                             | —       | Runs before every attempt.                            |
+| `afterResponse`   | `AfterResponse`                             | —       | Runs after every received response.                   |
+| `onRetry`         | `OnRetry`                                   | —       | Runs before a retry delay.                            |
+| `onError`         | `OnError`                                   | —       | Observes or replaces the final error.                 |
+| `onStatus`        | `StatusHandlers`                            | —       | Runs an action for the final response status.         |
 
 All other native `RequestInit` properties, such as `cache`, `credentials`, `mode`, and `redirect`, are supported.
 
@@ -338,15 +340,16 @@ const api = ft.create({
         request.headers.set("x-runtime", isServer ? "server" : "client");
     },
 
-    afterResponse: ({ response }) => {
-        console.log(response.status);
+    afterResponse: ({ response, attempt, request, isServer }) => {
+        console.log(response.status, attempt, request, isServer);
     },
 
-    onRetry: ({ attempt, delay, error }) => {
-        console.log({ attempt, delay, error });
+    onRetry: ({ attempt, delay, error, isServer }) => {
+        console.log({ attempt, delay, error, isServer });
     },
 
-    onError: ({ error }) => {
+    onError: ({ error, attempt, request, isServer }) => {
+        console.log({ error, attempt, request, isServer });
         return new Error("API request failed", { cause: error });
     },
 });
@@ -415,13 +418,7 @@ await api
 ## Errors
 
 ```ts
-import {
-    errorInfo,
-    FetchError,
-    HTTPError,
-    NetworkError,
-    TimeoutError,
-} from "@gauts/ft";
+import { errorInfo, FetchError, HTTPError, NetworkError, TimeoutError } from "@gauts/ft";
 ```
 
 - `HTTPError` exposes `request` and `response`.
