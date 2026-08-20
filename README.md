@@ -1,6 +1,6 @@
 # @gauts/ft
 
-[![Bundle Size](https://img.shields.io/bundlephobia/minzip/%40gauts%2Fft)](https://bundlephobia.com/package/@gauts/ft)
+[![Unpacked Size](https://img.shields.io/npm/unpacked-size/%40gauts%2Fft)](https://www.npmjs.com/package/@gauts/ft)
 
 A small, typed HTTP client built on the native Fetch API.
 
