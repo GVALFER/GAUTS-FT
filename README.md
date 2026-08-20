@@ -1,12 +1,13 @@
 # @gauts/ft
 
+[![Minified Size](https://img.shields.io/badge/minified-11.1_kB-007ec6)](https://bundlephobia.com/package/@gauts/ft)
+[![Minified and Gzipped Size](https://img.shields.io/badge/minified_%2B_gzip-4.2_kB-007ec6)](https://bundlephobia.com/package/@gauts/ft)
+
 [![npm version](https://img.shields.io/npm/v/@gauts/ft?logo=npm)](https://www.npmjs.com/package/@gauts/ft)
 [![npm downloads](https://img.shields.io/npm/dm/@gauts/ft?logo=npm)](https://www.npmjs.com/package/@gauts/ft)
 [![Node.js](https://img.shields.io/node/v/@gauts/ft?logo=node.js)](https://nodejs.org)
 [![License](https://img.shields.io/npm/l/@gauts/ft)](https://github.com/GVALFER/GAUTS-FT/blob/main/LICENSE)
 [![Tests](https://github.com/GVALFER/GAUTS-FT/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/GVALFER/GAUTS-FT/actions/workflows/ci.yml)
-[![Minified Size](https://img.shields.io/badge/minified-11.1_kB-007ec6)](https://bundlephobia.com/package/@gauts/ft)
-[![Minified and Gzipped Size](https://img.shields.io/badge/minified_%2B_gzip-4.2_kB-007ec6)](https://bundlephobia.com/package/@gauts/ft)
 
 A lightweight, typed HTTP client for browsers and Node.js, built on native Fetch with retries, timeouts, and progress tracking.
 
